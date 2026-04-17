@@ -1,4 +1,4 @@
-require('dotenv').config(); // Dotenv eka load karanna
+require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
@@ -6,54 +6,61 @@ const mongoose = require('mongoose');
 const app = express();
 
 // Middleware
-app.use(cors());
 app.use(express.json());
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log("MongoDB Connected Successfully!"))
-  .catch((err) => console.error("MongoDB Connection Error:", err));
+// CORS Configuration - ඔයාගේ Frontend URL එක මෙතන තියෙනවා
+app.use(cors({
+    origin: ["https://login-app-host-frontned.vercel.app"],
+    methods: ["GET", "POST", "OPTIONS"],
+    credentials: true
+}));
 
-// User Schema (Database Structure)
-const UserSchema = new mongoose.Schema({
-  email: { type: String, required: true },
-  password: { type: String, required: true }
-});
-
-const User = mongoose.model('User', UserSchema);
-
-// POST /login Endpoint
-app.post('/login', async (req, res) => {
-  const { email, password } = req.body;
-
-  try {
-    // Database eken check kirima
-    const user = await User.findOne({ email, password });
-
-    if (user) {
-      // Login Success
-      res.status(200).json({ message: "Login Successful" });
-    } else {
-      // Invalid Credentials
-      res.status(401).json({ message: "Invalid Credentials" });
+// MongoDB Connection with Timeout Options
+const connectDB = async () => {
+    try {
+        if (mongoose.connection.readyState === 1) return;
+        
+        await mongoose.connect(process.env.MONGO_URI, {
+            serverSelectionTimeoutMS: 5000,
+        });
+        console.log("MongoDB Connected Successfully!");
+    } catch (err) {
+        console.error("MongoDB Connection Error:", err.message);
     }
-  } catch (error) {
-    res.status(500).json({ message: "Server Error" });
-  }
+};
+
+// User Schema
+const UserSchema = new mongoose.Schema({
+    email: { type: String, required: true },
+    password: { type: String, required: true }
 });
 
-// Server eka run kirima
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const User = mongoose.models.User || mongoose.model('User', UserSchema);
 
-// Manual data ekak danna widiya (Meka ekaparak run karala passe ain karanna)
+// Routes
+app.get("/", (req, res) => res.send("Server is running..."));
 
-// const seedUser = async () => {
-//   const newUser = new User({ email: "test@gmail.com", password: "123" });
-//   await newUser.save();
-//   console.log("Manual User Created!");
-// };
-// seedUser();
+app.post('/login', async (req, res) => {
+    await connectDB();
+    const { email, password } = req.body;
 
-// මේ පේළිය අන්තිමට එකතු කරන්න (app.listen එක වෙනුවට)
+    try {
+        const user = await User.findOne({ email, password });
+        if (user) {
+            res.status(200).json({ message: "Login Successful" });
+        } else {
+            res.status(401).json({ message: "Invalid Credentials" });
+        }
+    } catch (error) {
+        console.error("Login Error:", error);
+        res.status(500).json({ message: "Server Error", details: error.message });
+    }
+});
+
+// Local development
+if (process.env.NODE_ENV !== 'production') {
+    const PORT = process.env.PORT || 5000;
+    app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
+
 module.exports = app;
